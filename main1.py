@@ -1,7 +1,9 @@
-import random, sqlite3, logging, time, datetime
-from aiogram import Bot, Dispatcher, executor, types
+import random, sqlite3, logging, time, datetime, asyncio
+from aiogram import Bot, Dispatcher, types
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
+
+logger = logging.getLogger(__name__)
 
 class Roulette(StatesGroup):
     waiting_for_bet = State()
@@ -9,8 +11,7 @@ class Roulette(StatesGroup):
     waiting_for_bonus = State()
     waiting_for_steal = State()
 
-
-bot = Bot(token='6291371300:AAEz0uc9vVhP4nqa4Z37-wj2rcUld6Cp_mc')
+bot = Bot(token="6715852702:AAHrp45w6lb4r_CUEoDvOmzDbk5CkrXR5vs")
 dp = Dispatcher(bot)
 
 logging.basicConfig(level=logging.INFO)
@@ -22,8 +23,20 @@ cursor.execute('''CREATE TABLE IF NOT EXISTS balances
                   (user_id INTEGER PRIMARY KEY, name TEXT, balance INTEGER)''')
 conn.commit()
 
-@dp.message_handler(commands=['махакраш'])
+def ensure_user_exists(userId, firstName):
+    cursor.execute('SELECT * FROM balances WHERE user_id=?', (userId,))
+    if cursor.fetchone() is None:
+        cursor.execute('INSERT INTO balances (user_id, name, balance) VALUES (?, ?, ?)', (userId, firstName, 0))
+        conn.commit()
+
+@dp.message_handler(commands=['start'])
+async def start(message: types.Message):
+    ensure_user_exists(message.from_user.id, message.from_user.first_name)
+    await message.answer('/help все нужные команды', parse_mode='HTML')
+
+@dp.message_handler(commands=['help'])
 async def commands(message: types.Message):
+    ensure_user_exists(message.from_user.id, message.from_user.first_name)
     await message.answer('<b>/бандит</b> - команда что бы играть в бандита обычного из рдно\n'
                          '<b>/б</b> - команда что бы баланс посмотреть\n'
                          '<b>/бонус</b> - команда что бы получить бонус, если ты бищара ебаный\n'
@@ -34,6 +47,8 @@ async def commands(message: types.Message):
 
 @dp.message_handler(commands=['бандит'])
 async def process_bandit_command(message: types.Message):
+    ensure_user_exists(message.from_user.id, message.from_user.first_name)
+
     try:
         command, amount = message.text.split()
         amount = int(amount)
@@ -45,10 +60,10 @@ async def process_bandit_command(message: types.Message):
         await message.reply("Произошла ошибка")
         return
 
-    cursor.execute('SELECT * FROM balances WHERE user_id=?', (message.from_user.id,))
+    cursor.execute("SELECT * FROM balances WHERE user_id=?", (message.from_user.id,))
     row = cursor.fetchone()
     if row is None:
-        cursor.execute('INSERT INTO balances VALUES (?, ?, ?, ?)', (message.from_user.id, message.from_user.first_name, 5000, None))
+        cursor.execute("INSERT INTO balances VALUES (?, ?, ?, ?)", (message.from_user.id, message.from_user.first_name, 5000, None))
         conn.commit()
         balance = 5000
     else:
@@ -81,37 +96,45 @@ async def process_bandit_command(message: types.Message):
         await sent_message.edit_text(f"{amount}\nНе повезло?\n{int(new_amount)}")
         balance += new_amount - amount
 
-    cursor.execute('UPDATE balances SET balance=? WHERE user_id=?', (balance, message.from_user.id))
+    cursor.execute("UPDATE balances SET balance=? WHERE user_id=?", (balance, message.from_user.id))
     conn.commit()
 
 @dp.message_handler(commands=['б'])
 async def process_balance_command(message: types.Message):
-    cursor.execute('SELECT * FROM balances WHERE user_id=?', (message.from_user.id,))
+    ensure_user_exists(message.from_user.id, message.from_user.first_name)
+
+    cursor.execute("SELECT * FROM balances WHERE user_id=?", (message.from_user.id,))
     row = cursor.fetchone()
     if row is None:
-        cursor.execute('INSERT INTO balances VALUES (?, ?, ?, ?)', (message.from_user.id, message.from_user.first_name, 5000, None))
+        cursor.execute("INSERT INTO balances VALUES (?, ?, ?, ?)", (message.from_user.id, message.from_user.first_name, 5000, None))
         conn.commit()
         balance = 5000
     else:
         balance = row[2]
 
-    await message.reply(f'Ваш баланс: {balance}')
+    if balance > 0:
+        await message.reply(f'Ваш баланс: {balance}')
+    else:
+        await message.reply("Ваш баланс: 0\nПопробуйте написать команду /бонус")
 
 @dp.message_handler(commands=['дать'])
 async def process_give_command(message: types.Message):
-    try:
-        command, amount = message.text.split()
-        amount = int(amount)
-    except ValueError:
-        await message.reply("не тупи")
-        return
-    except Exception as e:
-        logging.exception(e)
-        await message.reply("ошибочка какая та")
-        return
-    if message.from_user.id != 994006554:
-        await message.reply("У вас нет прав на выполнение этой команды")
-        return
+    ensure_user_exists(message.from_user.id, message.from_user.first_name)
+    if message.from_user.id != 1087968824:
+        if message.from_user.id != 994006554:
+            await message.reply("У вас нет прав на выполнение этой команды")
+            return
+    else:
+        try:
+            command, amount = message.text.split()
+            amount = int(amount)
+        except ValueError:
+            await message.reply("не тупи")
+            return
+        except Exception as e:
+            logging.exception(e)
+            await message.reply("ошибочка какая та")
+            return
 
     cursor.execute('SELECT * FROM balances WHERE user_id=?', (message.reply_to_message.from_user.id,))
     row = cursor.fetchone()
@@ -126,6 +149,7 @@ async def process_give_command(message: types.Message):
 
 @dp.message_handler(commands=['богачи'])
 async def process_richest_command(message: types.Message):
+    ensure_user_exists(message.from_user.id, message.from_user.first_name)
     cursor.execute('SELECT name, balance FROM balances ORDER BY balance DESC LIMIT 10')
     rows = cursor.fetchall()
     if len(rows) == 0:
@@ -136,17 +160,17 @@ async def process_richest_command(message: types.Message):
             richest_list += f"{i}. {row[0]} - {row[1]}\n"
         await message.reply(f'Топ 10 богачей:\n{richest_list}')
 
+
 @dp.message_handler(commands=['бонус'])
 async def process_bonus_command(message: types.Message, state: FSMContext):
-    cursor.execute("PRAGMA table_info(balances)")
-    columns = [column[1] for column in cursor.fetchall()]
-    if 'bonus_date' not in columns:
-        cursor.execute('ALTER TABLE balances ADD COLUMN bonus_date TEXT')
+    ensure_user_exists(message.from_user.id, message.from_user.first_name)
+
     today = time.strftime("%Y-%m-%d")
     cursor.execute('SELECT * FROM balances WHERE user_id=?', (message.from_user.id,))
     row = cursor.fetchone()
     if row is None:
-        cursor.execute('INSERT INTO balances VALUES (?, ?, ?, ?)', (message.from_user.id, message.from_user.first_name, 0))
+        cursor.execute('INSERT INTO balances VALUES (?, ?, ?, ?)',
+                       (message.from_user.id, message.from_user.first_name, 0))
         conn.commit()
         balance = 0
     else:
@@ -158,12 +182,18 @@ async def process_bonus_command(message: types.Message, state: FSMContext):
             f"Следующий бонус будет доступен через {bonus_time.seconds // 3600} часов {bonus_time.seconds // 60 % 60} минут")
         return
 
-    cursor.execute('UPDATE balances SET balance=?, bonus_date=? WHERE user_id=?', (balance+3000, today, message.from_user.id))
+    if balance is None:
+        balance = 0
+
+    cursor.execute('UPDATE balances SET balance=?, bonus_date=? WHERE user_id=?',
+                   (balance + 3000, today, message.from_user.id))
     conn.commit()
-    await message.reply("Вы получили бонус 3000")
+    await message.reply("Вы получили 3000 бонуса")
+
 
 @dp.message_handler(commands=['беру'])
 async def process_give_command(message: types.Message, state: FSMContext):
+    ensure_user_exists(message.from_user.id, message.from_user.first_name)
     try:
         amount = int(message.text.split()[1])
         target_user_id = message.reply_to_message.from_user.id
@@ -197,6 +227,7 @@ async def process_give_command(message: types.Message, state: FSMContext):
 
 @dp.message_handler(commands=['урлау'])
 async def process_steal_command(message: types.Message, state: FSMContext):
+    ensure_user_exists(message.from_user.id, message.from_user.first_name)
     try:
         target_user_id = message.reply_to_message.from_user.id
     except AttributeError:
@@ -214,7 +245,6 @@ async def process_steal_command(message: types.Message, state: FSMContext):
         await message.reply('У пользователя нет денег на счете')
         return
 
-    # Вычисляем 10% от баланса пользователя, которому ответили
     amount = int(target_user_balance * 0.1)
 
     cursor.execute('SELECT balance FROM balances WHERE user_id=?', (message.from_user.id,))
@@ -234,7 +264,9 @@ async def process_steal_command(message: types.Message, state: FSMContext):
 
     await message.reply(f'Вы украли <b>{amount}</b> монет у пользователя <b>{message.reply_to_message.from_user.first_name}</b>', parse_mode='HTML')
 
-
+async def main():
+    await dp.skip_updates()
+    await dp.start_polling()
 
 if __name__ == '__main__':
-    executor.start_polling(dp, skip_updates=True)
+    asyncio.run(main())
