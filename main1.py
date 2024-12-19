@@ -11,7 +11,7 @@ class Roulette(StatesGroup):
     waiting_for_bonus = State()
     waiting_for_steal = State()
 
-bot = Bot(token="6715852702:AAHrp45w6lb4r_CUEoDvOmzDbk5CkrXR5vs")
+bot = Bot(token=token)
 dp = Dispatcher(bot)
 
 logging.basicConfig(level=logging.INFO)
